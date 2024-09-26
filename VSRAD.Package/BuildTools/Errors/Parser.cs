@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Text.RegularExpressions;
+using System.Linq;
 using static VSRAD.BuildTools.IPCBuildResult;
 
 namespace VSRAD.Package.BuildTools.Errors
@@ -15,21 +16,17 @@ namespace VSRAD.Package.BuildTools.Errors
             {
                 using (var reader = new StringReader(output))
                 {
-                    Message lastMessage = null;
-
                     string line;
                     while ((line = reader.ReadLine()) != null)
                     {
-                        var message = ParseScriptMessage(line) ?? ParseKeywordMessage(line) ?? ParseClangMessage(line);
+                        var message = 
+                            ParseAsmMessage(line) ??
+                            ParseScriptMessage(line) ??
+                            ParseClangMessage(line);
                         if (message != null)
-                        {
-                            lastMessage = message;
                             messages.Add(message);
-                        }
-                        else if (lastMessage != null)
-                        {
-                            lastMessage.Text += Environment.NewLine + line;
-                        }
+                        else if (messages.Count > 0)
+                            messages.Last().Text += Environment.NewLine + line;
                     }
                 }
             }
@@ -57,51 +54,53 @@ namespace VSRAD.Package.BuildTools.Errors
             };
         }
 
-        private static readonly Regex ScriptErrorRegex = new Regex(
+        private static readonly Regex AsmErrorRegex = new Regex(
             @"\*(?<kind>[EW]),(?<code>[^:(]+)(?>\s\((?<file>.+):(?<line>\d+)\))?:\s(?<text>.+)", RegexOptions.Compiled);
 
-        private static readonly Regex ScriptErrorLocationInTextRegex = new Regex(
-            @"(?<text>.+)\s\((?<file>.+):(?<line>\d+)\)", RegexOptions.Compiled);
+        private static Message ParseAsmMessage(string header)
+        {
+            var match = AsmErrorRegex.Match(header);
+            if (!match.Success) return null;
+
+            var code = match.Groups["code"].Value;
+            var textAndMaybeLocation = match.Groups["text"].Value;
+
+            var kind = ParseMessageKind(match.Groups["kind"].Value);
+
+            if (match.Success)
+            {
+                var source = match.Groups["file"].Success
+                                ? match.Groups["file"].Value.Trim()
+                                : "";
+                var line = match.Groups["line"].Success
+                                ? int.Parse(match.Groups["line"].Value)
+                                : 0;
+                return new Message {
+                    Kind = kind,
+                    SourceFile = source,
+                    Line = line,
+                    Text = code + ": " + match.Groups["text"].Value
+                };
+            }
+            else
+            {
+                return new Message { Kind = kind, Text = code + ": " + textAndMaybeLocation };
+            }
+        }
+
+        private static readonly Regex ScriptErrorRegex = new Regex(
+            @"(?<kind>ERROR|WARNING):\s*(?<text>.+)", RegexOptions.Compiled);
 
         private static Message ParseScriptMessage(string header)
         {
             var match = ScriptErrorRegex.Match(header);
             if (!match.Success) return null;
 
-            var code = match.Groups["code"].Value;
-            var textAndMaybeLocation = match.Groups["text"].Value;
-
-            var message = new Message { Kind = ParseMessageKind(match.Groups["kind"].Value) };
-
-            if (!match.Groups["file"].Success)
-                match = ScriptErrorLocationInTextRegex.Match(textAndMaybeLocation);
-
-            if (match.Success)
-            {
-                message.SourceFile = match.Groups["file"].Value;
-                message.Line = int.Parse(match.Groups["line"].Value);
-            }
-
-            message.Text = code + ": " + (match.Success ? match.Groups["text"].Value : textAndMaybeLocation);
-
-            return message;
-        }
-
-        private static readonly Regex KeywordErrorRegex = new Regex(
-            @"(?<kind>ERROR|WARNING):\s*(?<text>.+)", RegexOptions.Compiled);
-
-        private static Message ParseKeywordMessage(string header)
-        {
-            var match = KeywordErrorRegex.Match(header);
-            if (!match.Success) return null;
-
-            var message = new Message
+            return new Message
             {
                 Kind = ParseMessageKind(match.Groups["kind"].Value),
                 Text = match.Groups["text"].Value
             };
-
-            return message;
         }
 
         private static MessageKind ParseMessageKind(string kind)

@@ -20,11 +20,9 @@ Relative\path\host.c:4:2: warning: implicitly declaring library function 'printf
         printf(""h"");
         ^
 C:\Absolute\Path\host.c:4:2: note: include the header<stdio.h> or explicitly provide a declaration for 'printf'
-
 input.s:16:10: fatal error: 'abcde.s' file not found
 #include ""abcde.s""
-         ^~~~~~~~~
-";
+         ^~~~~~~~~";
 
         public static readonly Message[] ClangExpectedMessages = new Message[]
         {
@@ -41,7 +39,7 @@ input.s:16:10: fatal error: 'abcde.s' file not found
         printf(""h"");
         ^"},
             new Message { Kind = MessageKind.Note, Line = 4, Column = 2, SourceFile = @"C:\Absolute\Path\host.c", Text =
-                "include the header<stdio.h> or explicitly provide a declaration for 'printf'\r\n" },
+                "include the header<stdio.h> or explicitly provide a declaration for 'printf'" },
             new Message { Kind = MessageKind.Error, Line = 16, Column = 10, SourceFile = "input.s", Text =
 @"'abcde.s' file not found
 #include ""abcde.s""
@@ -55,43 +53,39 @@ input.s:16:10: fatal error: 'abcde.s' file not found
             Assert.Equal(ClangExpectedMessages, messages);
         }
 
-        public const string ScriptStderr = @"
-*E,fatal: undefined reference to 'printf' (<stdin>:3)
-*E,fatal: undefined reference to 'printf' (C:\Absolute\Path\source.c:3)
-*W,undefined: 1 undefined references found
+        public const string AsmStderr =
+@"*W,undefined: 1 undefined references found
 *E,syntax error (<stdin>:12): at symbol 'printf'
     parse error: syntax error, unexpected T_PAAMAYIM_NEKUDOTAYIM
     did you really mean to use the scope resolution op here?
 *E,fatal (C:\Absolute\Path\source.c:35): Uncaught error: Undefined variable: user
-";
+*W,undefined: undefined reference to 'printf'";
 
-        public static readonly Message[] ScriptExpectedMessages = new Message[]
+        public static readonly Message[] AsmExpectedMessages = new Message[]
         {
-            new Message { Kind = MessageKind.Error, Line = 3, SourceFile = "<stdin>", Text = "fatal: undefined reference to 'printf'"},
-            new Message { Kind = MessageKind.Error, Line = 3, SourceFile = @"C:\Absolute\Path\source.c", Text = "fatal: undefined reference to 'printf'"},
             new Message { Kind = MessageKind.Warning, Line = 0, SourceFile = "", Text = "undefined: 1 undefined references found" },
             new Message { Kind = MessageKind.Error, Line = 12, SourceFile = "<stdin>", Text =
 @"syntax error: at symbol 'printf'
     parse error: syntax error, unexpected T_PAAMAYIM_NEKUDOTAYIM
     did you really mean to use the scope resolution op here?" },
-            new Message { Kind = MessageKind.Error, Line = 35, SourceFile = @"C:\Absolute\Path\source.c", Text = "fatal: Uncaught error: Undefined variable: user" }
+            new Message { Kind = MessageKind.Error, Line = 35, SourceFile = @"C:\Absolute\Path\source.c", Text = "fatal: Uncaught error: Undefined variable: user" },
+            new Message { Kind = MessageKind.Warning, Line = 0, SourceFile = "", Text = "undefined: undefined reference to 'printf'" }
         };
 
         [Fact]
-        public void ScriptErrorTest()
+        public void AsmErrorTest()
         {
-            var messages = ParseStderr(new string[] { ScriptStderr }).ToArray();
-            Assert.Equal(ScriptExpectedMessages, messages);
+            var messages = ParseStderr(new string[] { AsmStderr }).ToArray();
+            Assert.Equal(AsmExpectedMessages, messages);
         }
 
-        public const string KeywordStderr = @"
-*E,fatal: undefined reference to 'printf' (<stdin>:3)
+        public const string ScriptStderr =
+@"*E,fatal (<stdin>:3): undefined reference to 'printf'
 ERROR: check if app exists and can be executed 'C:\NEVER\GONNA\GIVE\YOU\UP.exe'
 WARNING: you are incredibly beautiful!
-*E,fatal (auth.c:35): Uncaught error: Undefined variable: user
-";
+*E,fatal (auth.c:35): Uncaught error: Undefined variable: user";
 
-        public static readonly Message[] KeywordErrorExpectedMessages = new Message[]
+        public static readonly Message[] ScriptErrorExpectedMessages = new Message[]
         {
             new Message { Kind = MessageKind.Error, Line = 3, SourceFile = "<stdin>", Text = "fatal: undefined reference to 'printf'" },
             new Message { Kind = MessageKind.Error, Line = 0, SourceFile = "", Text = @"check if app exists and can be executed 'C:\NEVER\GONNA\GIVE\YOU\UP.exe'" },
@@ -100,18 +94,18 @@ WARNING: you are incredibly beautiful!
         };
 
         [Fact]
-        public void KeywordErrorTest()
+        public void ScriptErrorTest()
         {
-            var messages = ParseStderr(new string[] { KeywordStderr }).ToArray();
-            Assert.Equal(KeywordErrorExpectedMessages, messages);
+            var messages = ParseStderr(new string[] { ScriptStderr }).ToArray();
+            Assert.Equal(ScriptErrorExpectedMessages, messages);
         }
 
         [Fact]
         public void MixedErrorFormatsTest()
         {
-            var expectedMessages = ClangExpectedMessages.Concat(KeywordErrorExpectedMessages).Concat(ScriptExpectedMessages).ToArray();
+            var expectedMessages = ClangExpectedMessages.Concat(ScriptErrorExpectedMessages).Concat(AsmExpectedMessages).ToArray();
 
-            var separateOutputs = new[] { ClangStderr, KeywordStderr, ScriptStderr };
+            var separateOutputs = new[] { ClangStderr, ScriptStderr, AsmStderr };
             var separateOutputsMessages = ParseStderr(separateOutputs).ToArray();
             Assert.Equal(expectedMessages, separateOutputsMessages);
 
